@@ -77,7 +77,6 @@ fn parse_puzzle_input() -> ParsedInput {
     let data = include_str!("./data.txt");
 
     // divide the data into init_state and instructions
-
     let mut raw_init_state: Vec<String> = Vec::new();
 
     let raw_lines = data.lines().map(|l| l.to_owned()).collect::<Vec<String>>();
@@ -131,8 +130,6 @@ fn parse_puzzle_input() -> ParsedInput {
     let instructions = raw_lines
         .into_iter()
         .map(|l| {
-            // let l_chars = l.chars().collect::<Vec<char>>();
-
             let mut split = l.split_whitespace();
 
             split.next();
@@ -154,17 +151,4 @@ fn parse_puzzle_input() -> ParsedInput {
         init_state,
         instructions,
     }
-
-    /*let raw_init_state = data
-    .lines()
-    .map(|l| l.to_string())
-    .try_fold("", |curr_state, line| {
-        if line.starts_with(" 1") {
-            return curr_state;
-        } else {
-            // curr_state.push_str(line);
-
-            return (curr_state.to_string() + &line).as_str();
-        }
-    });*/
 }
