@@ -2,9 +2,9 @@ fn main() {
     part_one();
 }
 
-type Pos = [[bool; 6]; 5];
+type Map = [[bool; 6]; 5];
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum Motion {
     Left,
     Right,
@@ -17,20 +17,109 @@ type Step = (Motion, usize);
 type Moves = Vec<Step>;
 
 fn part_one() {
-    let head: Pos = [
-        [false, false, false, false, false, false],
-        [false, false, false, false, false, false],
-        [false, false, false, false, false, false],
-        [false, false, false, false, false, false],
-        [true, false, false, false, false, false],
-    ];
+    let data = get_moves();
 
-    let moves = get_moves();
-    let visited: Pos = get_visited_worm(head, moves);
+    let tail_visited = get_tail_visited(&data);
 
-    let amount = get_amount_visited(&visited);
+    println!("{}", tail_visited);
+}
 
-    println!("{}", amount);
+fn get_tail_visited(moves: &Moves) -> usize {
+    let map = move_on_map(moves);
+    map.into_iter()
+        .flat_map(|line| line.into_iter().filter(|el| *el == true))
+        .filter(|el| *el == true)
+        .count()
+}
+
+fn move_on_map(moves: &Moves) -> Map {
+    let mut map = [[false; 6]; 5];
+    map[4][0] = true;
+
+    let mut head_pos = Position::default();
+    let mut tail_pos = Position::default();
+
+    move_steps(moves, &mut map, &mut head_pos, &mut tail_pos);
+
+    map
+}
+
+fn move_steps(moves: &Moves, map: &mut Map, head_pos: &mut Position, tail_pos: &mut Position) {
+    for m in moves {
+        let motion = &m.0;
+        let steps = &m.1;
+
+        // println!("{:?}", m);
+
+        for _ in 0..*steps {
+            move_step(motion, head_pos, tail_pos);
+            // println!("H {:?} T {:?}", head_pos, tail_pos);
+
+            assert!(head_pos.x < 6);
+            assert!(head_pos.y < 5);
+            assert!(tail_pos.x < 6);
+            assert!(tail_pos.y < 5);
+
+            map[tail_pos.y][tail_pos.x] = true;
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+struct Position {
+    x: usize,
+    y: usize,
+}
+
+impl Default for Position {
+    fn default() -> Self {
+        Self { x: 0, y: 4 }
+    }
+}
+
+impl Motion {
+    fn is_horizontal(&self) -> bool {
+        *self == Motion::Left || *self == Motion::Right
+    }
+}
+
+fn move_step(motion: &Motion, head_pos: &mut Position, tail_pos: &mut Position) {
+    // move the head
+    match motion {
+        Motion::Right => {
+            head_pos.x = (head_pos.x + 1) % 6;
+        }
+        Motion::Left => {
+            head_pos.x = head_pos.x.checked_sub(1).unwrap_or(5) % 6;
+        }
+        Motion::Down => {
+            head_pos.y = (head_pos.y + 1) % 5;
+        }
+        Motion::Up => {
+            head_pos.y = head_pos.y.checked_sub(1).unwrap_or(4) % 5;
+        }
+    }
+
+    if head_pos.x.abs_diff(tail_pos.x) > 1 || head_pos.y.abs_diff(tail_pos.y) > 1 {
+        match motion {
+            Motion::Right => {
+                tail_pos.x = (tail_pos.x + 1) % 6;
+                tail_pos.y = head_pos.y
+            }
+            Motion::Left => {
+                tail_pos.x = tail_pos.x.checked_sub(1).unwrap_or(5) % 6;
+                tail_pos.y = head_pos.y
+            }
+            Motion::Down => {
+                tail_pos.x = head_pos.x;
+                tail_pos.y = (tail_pos.y + 1) % 5;
+            }
+            Motion::Up => {
+                tail_pos.x = head_pos.x;
+                tail_pos.y = tail_pos.y.checked_sub(1).unwrap_or(4) % 5;
+            }
+        }
+    }
 }
 
 fn get_moves() -> Moves {
@@ -55,258 +144,28 @@ fn get_moves() -> Moves {
         .collect()
 }
 
-fn get_amount_visited(visited: &Pos) -> usize {
-    visited
-        .into_iter()
-        .flat_map(|l| l.into_iter().filter(|el| *el == &true))
-        .count()
-}
+#[test]
+fn test_move() {
+    let mut head_pos = Position::default();
+    let mut tail_pos = Position::default();
 
-/// Returns a map of visited places
-fn get_visited_worm(head_start: Pos, moves: Moves) -> Pos {
-    // let mut visited: Pos = [[false; 6]; 6];
-    let mut visited = head_start;
+    move_step(&Motion::Up, &mut head_pos, &mut tail_pos);
 
-    // start at same val
-    let mut head_pos = head_start;
-    let mut tail_pos = head_start;
+    pretty_assertions::assert_eq!(head_pos, Position { x: 0, y: 3 });
+    pretty_assertions::assert_eq!(tail_pos, Position { x: 0, y: 4 });
 
-    for (i, m) in moves.iter().enumerate() {
-        head_pos = move_one_step(&head_pos, m);
+    move_step(&Motion::Right, &mut head_pos, &mut tail_pos);
 
-        if i > 0 {
-            tail_pos = move_follow_tail(&tail_pos, &head_pos, m);
-        }
-
-        visited = or_assign(visited, tail_pos);
-    }
-
-    visited
-}
-
-fn move_follow_tail(tail: &Pos, head: &Pos, step: &Step) -> Pos {
-    // 1. make sure that the tail is aligned with the head
-    // 2. follow
-
-    let (t_x, t_y) = pos_x_y(tail).unwrap();
-    let (h_x, h_y) = pos_x_y(head).unwrap();
-
-    let (x, y) = match step.0 {
-        // vertical
-        Motion::Up | Motion::Down => (h_x, t_y),
-        // horizontal
-        Motion::Left | Motion::Right => (t_x, h_y),
-    };
-
-    let adjusted_tail = set_pos(x, y);
-    let end_tail = move_one_step(&adjusted_tail, step);
-
-    end_tail
-}
-
-fn set_pos(x: usize, y: usize) -> Pos {
-    let mut pos = [[false; 6]; 5];
-    pos[y][x] = true;
-
-    pos
-}
-
-fn move_one_step(from: &Pos, step: &Step) -> Pos {
-    let mut to: Pos = [[false; 6]; 5];
-
-    let mut from_pos = pos_x_y(from).unwrap();
-
-    // is y, x
-    to[from_pos.1][from_pos.0] = false;
-
-    match step.0 {
-        Motion::Right => from_pos.0 += step.1,
-        Motion::Left => from_pos.0 -= step.1,
-        Motion::Down => from_pos.1 += step.1,
-        Motion::Up => from_pos.1 -= step.1,
-    }
-
-    to[from_pos.1 % 6][from_pos.0 % 6] = true;
-
-    to
-}
-
-/// returns (x, y) of the *only* "true" in the map
-fn pos_x_y(pos: &Pos) -> Option<(usize, usize)> {
-    for (y, line) in pos.iter().enumerate() {
-        for (x, col) in line.iter().enumerate() {
-            if *col {
-                return Some((x, y));
-            }
-        }
-    }
-
-    None
-}
-
-fn or_assign(from: Pos, to: Pos) -> Pos {
-    let mut pos = from;
-
-    for (i, _) in from.iter().enumerate() {
-        for (j, _) in to.iter().enumerate() {
-            let val = from[i][j] | to[i][j];
-            pos[i][j] |= val;
-        }
-    }
-
-    pos
+    pretty_assertions::assert_eq!(head_pos, Position { x: 1, y: 3 });
+    pretty_assertions::assert_eq!(tail_pos, Position { x: 0, y: 4 });
 }
 
 #[test]
-fn cur_pos() {
-    let curr = [
-        [false, false, false, false, false, false],
-        [false, false, false, false, false, false],
-        [false, false, false, false, false, false],
-        [false, false, false, false, false, false],
-        [true, false, false, false, false, false],
-    ];
+fn test_move_one() {
+    let mut head_pos = Position::default();
+    let mut tail_pos = Position::default();
 
-    let pos = pos_x_y(&curr).unwrap();
-
-    pretty_assertions::assert_eq!(pos, (0, 4));
-}
-
-#[test]
-fn test_step() {
-    #[rustfmt::skip]
-    let from: Pos = [
-        [false, false, false, false, false, false],
-        [false, false, false, false, false, false],
-        [false, false, false, false, false, false],
-        [false, false, false, false, false, false],
-        [true, false, false, false, false, false],
-    ];
-
-    let step = (Motion::Right, 2);
-
-    let new_map = move_one_step(&from, &step);
-
-    pretty_assertions::assert_eq!(
-        new_map,
-        [
-            [false, false, false, false, false, false],
-            [false, false, false, false, false, false],
-            [false, false, false, false, false, false],
-            [false, false, false, false, false, false],
-            [false, false, true, false, false, false],
-        ]
-    );
-
-    pretty_assertions::assert_eq!(
-        move_one_step(&new_map, &(Motion::Up, 4)),
-        [
-            [false, false, true, false, false, false],
-            [false, false, false, false, false, false],
-            [false, false, false, false, false, false],
-            [false, false, false, false, false, false],
-            [false, false, false, false, false, false],
-        ]
-    );
-}
-
-#[test]
-fn test_big_step() {
-    let head: Pos = [
-        [false, false, false, false, false, false],
-        [false, false, false, false, false, false],
-        [false, false, false, false, false, false],
-        [false, false, false, false, false, false],
-        [true, false, false, false, false, false],
-    ];
-
-    let pos = move_one_step(&head, &(Motion::Right, 10));
-
-    pretty_assertions::assert_eq!(
-        pos,
-        [
-            [false, false, false, false, false, false],
-            [false, false, false, false, false, false],
-            [false, false, false, false, false, false],
-            [false, false, false, false, false, false],
-            [false, false, false, false, true, false],
-        ]
-    );
-}
-
-#[test]
-fn test_follow_tail() {
-    let head: Pos = [
-        [false, false, false, false, false, false],
-        [false, false, false, false, false, false],
-        [false, false, false, false, false, false],
-        [false, false, false, false, false, false],
-        [false, false, true, false, false, false],
-    ];
-
-    let m = (Motion::Right, 1);
-
-    let head = move_one_step(&head, &m);
-
-    let mut tail = head;
-    tail[4][2] = false;
-    tail[4][1] = true;
-
-    let tail = move_follow_tail(&tail, &head, &m);
-
-    pretty_assertions::assert_eq!(
-        tail,
-        [
-            [false, false, false, false, false, false],
-            [false, false, false, false, false, false],
-            [false, false, false, false, false, false],
-            [false, false, false, false, false, false],
-            [false, false, true, false, false, false],
-        ]
-    );
-
-    let m = (Motion::Down, 4);
-
-    let head = move_one_step(&head, &m);
-
-    // sanity check
-    pretty_assertions::assert_eq!(
-        head,
-        [
-            [false, false, false, false, false, false],
-            [false, false, false, false, false, false],
-            [false, false, false, false, false, false],
-            [false, false, false, true, false, false],
-            [false, false, false, false, false, false],
-        ]
-    );
-
-    let tail = move_follow_tail(&tail, &head, &m);
-
-    pretty_assertions::assert_eq!(
-        tail,
-        [
-            [false, false, false, false, false, false],
-            [false, false, false, false, false, false],
-            [false, false, false, false, false, false],
-            [false, false, false, true, false, false],
-            [false, false, false, false, false, false],
-        ]
-    );
-}
-
-#[test]
-fn test_steps() {
-    let head: Pos = [
-        [false, false, false, false, false, false],
-        [false, false, false, false, false, false],
-        [false, false, false, false, false, false],
-        [false, false, false, false, false, false],
-        [true, false, false, false, false, false],
-    ];
-
-    #[rustfmt::skip]
-    let moves: Moves = vec![
+    let moves = vec![
         (Motion::Right, 4),
         (Motion::Up, 4),
         (Motion::Left, 3),
@@ -317,49 +176,17 @@ fn test_steps() {
         (Motion::Right, 2),
     ];
 
-    let mut last_pos = head;
+    let mut map = [[false; 6]; 5];
 
-    for m in moves {
-        last_pos = move_one_step(&last_pos, &m);
-    }
+    move_steps(&moves, &mut map, &mut head_pos, &mut tail_pos);
 
-    #[rustfmt::skip]
-    pretty_assertions::assert_eq!(last_pos, [
-        [false, false, false, false, false, false],
-        [false, false, false, false, false, false],
-        [false, false, true, false, false, false],
-        [false, false, false, false, false, false],
-        [false, false, false, false, false, false],
-    ]);
+    pretty_assertions::assert_eq!(head_pos, Position { x: 2, y: 2 });
+    pretty_assertions::assert_eq!(tail_pos, Position { x: 1, y: 2 });
 }
 
 #[test]
-fn test_visited() {
-    let visited = [
-        [false, false, true, true, false, false],
-        [false, false, false, true, true, false],
-        [false, true, true, true, true, false],
-        [false, false, false, false, true, false],
-        [true, true, true, true, false, false],
-    ];
-
-    let amount = get_amount_visited(&visited);
-
-    assert_eq!(amount, 13);
-}
-
-#[test]
-fn test_init() {
-    let head: Pos = [
-        [false, false, false, false, false, false],
-        [false, false, false, false, false, false],
-        [false, false, false, false, false, false],
-        [false, false, false, false, false, false],
-        [true, false, false, false, false, false],
-    ];
-
-    #[rustfmt::skip]
-    let moves: Moves = vec![
+fn test_part_one() {
+    let moves = vec![
         (Motion::Right, 4),
         (Motion::Up, 4),
         (Motion::Left, 3),
@@ -370,10 +197,10 @@ fn test_init() {
         (Motion::Right, 2),
     ];
 
-    let visited: Pos = get_visited_worm(head, moves);
+    let map = move_on_map(&moves);
 
     pretty_assertions::assert_eq!(
-        visited,
+        map,
         [
             [false, false, true, true, false, false],
             [false, false, false, true, true, false],
@@ -382,4 +209,8 @@ fn test_init() {
             [true, true, true, true, false, false],
         ]
     );
+
+    let visited = get_tail_visited(&moves);
+
+    assert_eq!(visited, 13);
 }
